@@ -4,27 +4,45 @@ import type { EngineInterface, Register } from 'claude-code'
 // und ersetzt den Feldinhalt (ohne Enter). Zum Senden danach: Enter.
 const TRIGGER = /\s*\/brain-?dump\s*$/i
 
-const SYSTEM = `Du bereinigst und strukturierst diktierte deutsche Texte (Spracheingabe), bevor der Nutzer sie an einen KI-Assistenten schickt. Gib NUR den fertigen Text aus, ohne Einleitung und Kommentar.
+const WORKING = '\n\n⏳ Brain-Dump wird aufgeräumt …'
 
-Regeln:
-- Entferne Füllwörter (ähm, äh, also, halt, quasi, sozusagen, irgendwie, ne, ja gut), Stottern, Satzabbrüche, Selbstkorrekturen (nur die letzte Fassung zählt) und alle Wiederholungen. Jede Information steht genau einmal da.
-- Korrigiere Versprecher und Spracherkennungsfehler aus dem Kontext (z. B. "Mord" statt "Mod", "Braindamp" statt "Brain-Dump", falsch erkannte Namen/Fachbegriffe). Ist eine Korrektur unsicher, schreibe das Wort mit (?) dahinter.
-- Behalte ALLE inhaltlich wichtigen Punkte, Zahlen, Namen, Fristen, Wünsche und Einschränkungen. Nichts erfinden, nichts Wichtiges weglassen.
+const SYSTEM = `Du bereinigst und strukturierst diktierte oder getippte Texte (meist Deutsch, oft mit englischen Fachbegriffen), bevor der Nutzer sie an einen KI-Assistenten schickt. Gib NUR den fertigen Text aus, ohne Einleitung und Kommentar.
+
+VORGEHEN (intern, nicht ausgeben):
+1. Lies den GANZEN Text zuerst und bestimme Thema, Fachgebiet und worum es dem Nutzer geht.
+2. Prüfe jedes auffällige Wort im Licht dieses Themas. Ein Wort gilt nur als Fehler, wenn es im Satz und im Gesamtthema keinen Sinn ergibt. Klingt ein Wort wie ein anderes, das thematisch passt (Spracherkennung: "Mord" statt "Mod", "Braindamp" statt "Brain-Dump", "Gith Hub" statt "GitHub"), setze das passende ein.
+3. Ändere NIE ein Wort, das sinnvoll sein kann. Im Zweifel bleibt das Originalwort stehen, mit (?) dahinter. Rate nie ein anderes Wort.
+
+WÖRTER UND BEGRIFFE:
+- Englische Begriffe, Fachwörter, Produkt- und Eigennamen, Markennamen, Dateinamen, Befehle, Pfade, Code, URLs und Zahlen bleiben unverändert, auch wenn sie im deutschen Satz stehen. Ersetze sie nicht durch deutsche oder ähnlich klingende Wörter. Korrigiere nur eindeutig falsche Schreibweisen (z. B. "githab" → "GitHub").
+- Ein Begriff, der im Text mehrfach vorkommt, wird überall gleich geschrieben (die am besten passende Schreibweise).
+- Füge keine Wörter, Begriffe oder Details hinzu, die der Nutzer nicht gesagt hat.
+
+BEREINIGEN:
+- Entferne Füllwörter (ähm, äh, also, halt, quasi, sozusagen, irgendwie, ne, ja gut), Stottern, Satzabbrüche, Selbstkorrekturen (nur die letzte Fassung zählt) und Wiederholungen. Jede Information steht genau einmal da.
+- Behalte ALLE inhaltlich wichtigen Punkte, Zahlen, Namen, Fristen, Wünsche und Einschränkungen.
 - Behalte die Ich-Perspektive und den Ton des Nutzers; formuliere als direkte Anfrage an den Assistenten.
-- Struktur: erst ein bis zwei Sätze Ziel/Kontext. Danach nach Bedarf mit fetten Zwischenüberschriften und Stichpunkten: **Ziel**, **Anforderungen**, **Aufgaben**, **Entscheidungen**, **Offene Fragen**. Leere Abschnitte weglassen. Kurze Eingaben bleiben kurze, saubere Sätze ohne Überschriften.
-- Widersprüchliches oder Unklares nicht auflösen, sondern unter **Offene Fragen** festhalten.`
+
+STRUKTUR:
+- Erst ein bis zwei Sätze Ziel/Kontext. Danach nach Bedarf mit fetten Zwischenüberschriften und Stichpunkten: **Ziel**, **Anforderungen**, **Aufgaben**, **Entscheidungen**, **Offene Fragen**. Leere Abschnitte weglassen. Kurze Eingaben bleiben kurze, saubere Sätze ohne Überschriften.
+- Widersprüchliches oder Unklares nicht auflösen, sondern unter **Offene Fragen** festhalten. Dort auch Wörter nennen, bei denen du dir unsicher warst.`
 
 let isBusy = false
 
 async function tidy($: EngineInterface, full: string, raw: string) {
+  // Sofort im Eingabefeld zeigen, dass etwas passiert.
+  const working = raw + WORKING
+  await $.clock.sleep(60)
+  await $.prompt.fill({ text: working, mode: 'replace' })
   $.ui.status('Brain-Dump wird aufgeräumt …')
+
   const r = await $.model.complete({
     model: 'sonnet',
     system: SYSTEM,
     prompt: raw,
     maxTokens: 4000,
-    effort: 'low',
-    timeoutMs: 60000,
+    effort: 'medium',
+    timeoutMs: 90000,
   })
   $.ui.status(undefined)
 
@@ -32,9 +50,9 @@ async function tidy($: EngineInterface, full: string, raw: string) {
     $.ui.toast('Aufräumen fehlgeschlagen, dein Originaltext steht wieder im Feld.')
   }
 
-  // Nur ersetzen, wenn das Feld noch unverändert ist.
+  // Nur ersetzen, wenn der Nutzer das Feld währenddessen nicht verändert hat.
   const box = await $.prompt.read()
-  if (box.text === full) {
+  if (box.text === working || box.text === full) {
     await $.prompt.fill({ text: r.isAnswered ? r.text.trim() : raw, mode: 'replace' })
   } else {
     $.ui.toast('Das Feld wurde währenddessen geändert, nichts ersetzt.')
@@ -74,7 +92,16 @@ export const register: Register = on => {
 
   // Falls doch mit Enter abgeschickt: nicht senden, sondern aufräumen.
   on('prompt.submit', async ($, e, next) => {
-    if (e.command || e.isMeta || !TRIGGER.test(e.text)) {
+    if (e.command || e.isMeta) {
+      return next(e)
+    }
+
+    // Während des Aufräumens nicht senden, sonst geht der Platzhalter raus.
+    if (isBusy && e.text.includes(WORKING.trim())) {
+      return { drop: 'Brain-Dump läuft noch, gleich ist der Text fertig.' }
+    }
+
+    if (!TRIGGER.test(e.text)) {
       return next(e)
     }
 
@@ -84,11 +111,18 @@ export const register: Register = on => {
       return { drop: 'Kein Text vor /braindump.' }
     }
 
+    if (isBusy) {
+      return { drop: 'Brain-Dump läuft noch.' }
+    }
+
+    isBusy = true
     void (async () => {
       await $.clock.sleep(150)
       await $.prompt.fill({ text: e.text, mode: 'replace' })
       await tidy($, e.text, raw)
-    })()
+    })().finally(() => {
+      isBusy = false
+    })
 
     return { drop: 'Wird aufgeräumt …' }
   })
