@@ -16,7 +16,7 @@ Auch `/brain` und `/brain-dump` lösen das Aufräumen aus.
 ## Installation
 
 ```
-/plugin install braindump --marketplace <github-name>/claude-braindump-mod
+/plugin install braindump --marketplace VWdesignlab/-braindumb-Claude-code
 ```
 
 Danach `y` für das Hinzufügen des Marketplace und einen Geltungsbereich wählen.
