@@ -1,0 +1,21 @@
+# Wortliste für Brain-Dump: ein Begriff pro Zeile, oder "falsch → richtig"
+# für typische Hörfehler der Spracherkennung. Zeilen mit # werden ignoriert.
+Mod
+Mord → Mod
+Mods
+Morts → Mods
+Brain-Dump
+Braindamp → Brain-Dump
+/braindump
+Claude
+Claude Code
+Skill
+Plugin
+Hook
+Prompt
+Subagent
+Artifact
+GitHub
+Gith Hub → GitHub
+Repository
+Commit

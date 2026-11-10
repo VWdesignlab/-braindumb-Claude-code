@@ -1,7 +1,13 @@
 {
   "name": "claude-braindump-mod",
-  "owner": { "name": "Vincent" },
+  "owner": {
+    "name": "Vincent"
+  },
   "plugins": [
-    { "name": "braindump", "source": "./", "description": "Diktat aufräumen: am Ende /braindump tippen, die bereinigte Fassung ersetzt den Text im Eingabefeld." }
+    {
+      "name": "braindump",
+      "source": "./",
+      "description": "Diktat aufräumen und Prompt verbessern: /braindump ans Ende, die bereinigte Fassung samt offenen Bausteinen ersetzt den Text im Eingabefeld."
+    }
   ]
 }
